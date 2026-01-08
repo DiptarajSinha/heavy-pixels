@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Heavy Pixels</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #141414;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .hint {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: #666;
+            font-family: sans-serif;
+            pointer-events: none;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="hint">Items reset if they fall off-screen</div>
+    <div id="canvas-container"></div>
+
+    <script>
+        const Engine = Matter.Engine,
+            Render = Matter.Render,
+            Runner = Matter.Runner,
+            Bodies = Matter.Bodies,
+            Composite = Matter.Composite,
+            Mouse = Matter.Mouse,
+            MouseConstraint = Matter.MouseConstraint,
+            Events = Matter.Events;
+
+        const engine = Engine.create();
+        const world = engine.world;
+
+        // 1. RENDERER
+        const render = Render.create({
+            element: document.getElementById('canvas-container'),
+            engine: engine,
+            options: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                background: '#141414',
+                wireframes: false
+            }
+        });
+
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        // 2. BODIES (UI Elements)
+        const bodies = [];
+        const colors = ['#E50914', '#555', '#E50914', '#333']; // Netflix Palette
+
+        for (let i = 0; i < 15; i++) {
+            const x = Math.random() * window.innerWidth;
+            const y = Math.random() * -500; // Start high up
+
+            // Randomly choose a circle or a box
+            let body;
+            if (Math.random() > 0.5) {
+                body = Bodies.rectangle(x, y, 60, 90, { // Box
+                    render: { fillStyle: colors[i % colors.length] },
+                    chamfer: { radius: 5 },
+                    restitution: 0.5
+                });
+            } else {
+                body = Bodies.circle(x, y, 30, { // Circle
+                    render: { fillStyle: '#e5e5e5' },
+                    restitution: 0.7
+                });
+            }
+            bodies.push(body);
+        }
+        Composite.add(world, bodies);
+
+        // 3. WALLS (Thick Boundaries)
+        let walls = [];
+        function createBoundaries() {
+            Composite.remove(world, walls); // Clear old walls
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const thickness = 200; // MUCH thicker to catch fast objects
+
+            walls = [
+                Bodies.rectangle(w / 2, h + thickness / 2, w, thickness, { isStatic: true, render: { visible: false } }), // Floor
+                Bodies.rectangle(-thickness / 2, h / 2, thickness, h * 3, { isStatic: true, render: { visible: false } }), // Left
+                Bodies.rectangle(w + thickness / 2, h / 2, thickness, h * 3, { isStatic: true, render: { visible: false } }) // Right
+            ];
+            Composite.add(world, walls);
+        }
+        createBoundaries();
+
+        // 4. IMPROVED MOUSE INTERACTION
+        const mouse = Mouse.create(render.canvas);
+        const mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: {
+                stiffness: 0.5, // Tighter grip (was 0.2)
+                render: { visible: false }
+            }
+        });
+        Composite.add(world, mouseConstraint);
+        render.mouse = mouse;
+
+        // 5. SAFETY NET (The Fix for Disappearing Boxes)
+        Events.on(engine, 'beforeUpdate', function () {
+            const allBodies = Composite.allBodies(world);
+
+            allBodies.forEach(body => {
+                // If body falls below screen or flies too high
+                if (body.position.y > window.innerHeight + 100 || body.position.y < -1000) {
+                    // Teleport back to top center
+                    Matter.Body.setPosition(body, {
+                        x: Math.random() * window.innerWidth,
+                        y: -100
+                    });
+                    // Kill momentum so it doesn't shoot down instantly
+                    Matter.Body.setVelocity(body, { x: 0, y: 0 });
+                }
+            });
+        });
+
+        // 6. RESIZE HANDLING
+        window.addEventListener('resize', () => {
+            render.canvas.width = window.innerWidth;
+            render.canvas.height = window.innerHeight;
+            createBoundaries();
+        });
+
+    </script>
+</body>
+
+</html>
